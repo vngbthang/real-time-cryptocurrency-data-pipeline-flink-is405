@@ -1,0 +1,204 @@
+networks:
+  crypto-pipeline-net:
+    driver: bridge
+
+services:
+  # Zookeeper (Required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: zookeeper
+    networks:
+      - crypto-pipeline-net
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REJOIN_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: kafka
+  
+  # Kafka Init (Tạo topic tự động)
+  kafka-init:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka-init
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka to be ready..."
+        cub kafka-ready -b kafka:9092 1 30
+        echo "Creating Kafka topic: crypto_prices"
+        kafka-topics --create --topic crypto_prices \
+          --bootstrap-server kafka:9092 \
+          --partitions 3 \
+          --replication-factor 1 \
+          --if-not-exists
+        echo "Kafka topic created successfully!"
+        kafka-topics --list --bootstrap-server kafka:9092
+    
+  # PostgreSQL Database (For Crypto Data)
+  postgres-db:
+    image: postgres:14-alpine
+    container_name: postgres-db
+    networks:
+      - crypto-pipeline-net
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: crypto_data
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+  
+  # Coinbase Producer (Lấy dữ liệu crypto)
+  crypto-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    container_name: crypto-producer
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - kafka
+      - kafka-init
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - POLL_INTERVAL_SECONDS=10
+    restart: unless-stopped
+
+  # --- AIRFLOW SERVICES ---
+
+  # PostgreSQL Database (For Airflow Metastore)
+  postgres-airflow-db:
+    image: postgres:14-alpine
+    container_name: postgres-airflow-db
+    networks:
+      - crypto-pipeline-net
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432" # Mở cổng 5433 để tránh xung đột với
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+  
+  # Airflow Init (Chạy 1 lần để setup DB)
+  airflow-init:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: airflow-init
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - postgres-airflow-db
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow-db:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    command: >
+      bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+
+  # Airflow Webserver (Giao diện UI)
+  airflow-webserver:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: airflow-webserver
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - airflow-init
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow-db:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    command: airflow webserver
+
+  # Airflow Scheduler (Bộ lập lịch)
+  airflow-scheduler:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: airflow-scheduler
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - airflow-init
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow-db:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    command: airflow scheduler
+
+  # --- SPARK SERVICES ---
+
+  # Spark Master
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: spark-master
+    user: root
+    networks:
+      - crypto-pipeline-net
+    ports:
+      - "8081:8080" # Spark Master Web UI
+      - "7077:7077" # Spark Master Port
+    volumes:
+      - ./spark-apps:/opt/spark/apps
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+
+  # Spark Worker
+  spark-worker:
+    image: apache/spark:3.5.0
+    container_name: spark-worker
+    user: root
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark-apps:/opt/spark/apps
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+
+volumes:
+  postgres_data:
+  postgres_airflow_data:
