@@ -50,7 +50,7 @@ try:
         table_env.execute_sql(source_ddl)
         logger.info("Kafka source created")
         
-        # Create PostgreSQL sink
+        # Create PostgreSQL sink (match database schema without id - it's auto-generated)
         sink_ddl = f"""
             CREATE TABLE postgres_sink (
                 `timestamp` BIGINT,
@@ -60,8 +60,7 @@ try:
                 `price` DOUBLE,
                 `volume_24h` DOUBLE,
                 `source` STRING,
-                `iteration` BIGINT,
-                `processed_at` TIMESTAMP(3)
+                `iteration` BIGINT
             ) WITH (
                 'connector' = 'jdbc',
                 'url' = '{POSTGRES_URL}',
@@ -74,17 +73,21 @@ try:
         table_env.execute_sql(sink_ddl)
         logger.info("PostgreSQL sink created")
         
-        # Insert data
+        # Insert data (streaming query - will run indefinitely)
         insert_sql = """
             INSERT INTO postgres_sink
-            SELECT `timestamp`, symbol, base, currency, price, volume_24h, source, iteration,
-                   CURRENT_TIMESTAMP
+            SELECT `timestamp`, symbol, base, currency, price, volume_24h, source, iteration
             FROM kafka_source
-            WHERE price > 0
+            WHERE price IS NOT NULL AND price > 0
         """
         
         logger.info("Starting data processing...")
-        table_env.execute_sql(insert_sql)
+        # This blocks and runs the streaming job
+        table_result = table_env.execute_sql(insert_sql)
+        logger.info("Flink job submitted successfully")
+        
+        # Wait for job to complete (it won't - it's a streaming job)
+        table_result.wait()
         
     if __name__ == "__main__":
         main()

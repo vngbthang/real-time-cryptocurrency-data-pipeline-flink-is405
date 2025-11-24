@@ -10,8 +10,6 @@
 - ✅ **Dashboard riêng**: Spark UI (8081) vs Flink Dashboard (8082)
 - ✅ **Tự động hóa**: Script demo PowerShell để quan sát real-time
 
-📖 **[Xem chi tiết so sánh tại đây](docs/SPARK_VS_FLINK_COMPARISON.md)**
-
 ---
 
 ## 📋 Mục tiêu (Objective)
