@@ -1,5 +1,19 @@
 # 💰 Real-Time Cryptocurrency Analytics Pipeline
 
+## 🆕 **SPARK vs FLINK COMPARISON PROJECT**
+
+> **Mục tiêu mở rộng (IS405)**: So sánh hiệu suất giữa **Apache Spark Streaming** và **Apache Flink** trong xử lý dữ liệu real-time.
+
+### 🔥 Điểm nổi bật của phần mở rộng:
+- ✅ **Song song 2 engine**: Cùng xử lý 1 nguồn dữ liệu Kafka
+- ✅ **So sánh thực nghiệm**: Latency, Throughput, Resource Usage
+- ✅ **Dashboard riêng**: Spark UI (8081) vs Flink Dashboard (8082)
+- ✅ **Tự động hóa**: Script demo PowerShell để quan sát real-time
+
+📖 **[Xem chi tiết so sánh tại đây](docs/SPARK_VS_FLINK_COMPARISON.md)**
+
+---
+
 ## 📋 Mục tiêu (Objective)
 
 Project này xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh theo kiến trúc **Medallion** (Bronze-Silver-Gold) để xử lý dữ liệu cryptocurrency từ Coinbase API, cung cấp analytics và insights theo thời gian thực cho 5 loại cryptocurrency: **BTC, ETH, SOL, ADA, DOGE**.
@@ -7,7 +21,7 @@ Project này xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh theo ki�
 **Vấn đề giải quyết:**
 
 - **Real-time ingestion**: Thu thập dữ liệu giá và khối lượng giao dịch từ Coinbase API mỗi 10 giây.
-- **Stream processing**: Xử lý dữ liệu real-time với Spark Structured Streaming.
+- **Stream processing**: Xử lý dữ liệu real-time với Spark Structured Streaming **+ Apache Flink (mở rộng)**.
 - **Data aggregation**: Tạo metrics theo cửa sổ thời gian (10 phút, 1 giờ) cho phân tích.
 - **Orchestration**: Tự động hóa pipeline với Apache Airflow.
 - **Analytics ready**: Cung cấp dữ liệu sẵn sàng cho BI tools (Grafana, pgAdmin, REST API).
@@ -24,6 +38,7 @@ Project này xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh theo ki�
 |-----------------------|---------------------------------|-----------|
 | **Message Broker**    | Apache Kafka                    | 7.3.0     |
 | **Stream Processing** | Apache Spark Structured Streaming | 3.5.0     |
+| **Stream Processing (NEW)** | **Apache Flink**           | **1.18.0** |
 | **Database**          | PostgreSQL                      | 14        |
 | **Orchestration**     | Apache Airflow                  | 2.8.1     |
 | **Data Source**       | Coinbase API                    | v2        |
@@ -31,6 +46,8 @@ Project này xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh theo ki�
 | **Container Platform**| Docker + Docker Compose         | Latest    |
 | **BI Visualization**  | Grafana (optional)              | Latest    |
 | **API Framework**     | FastAPI (optional)              | Latest    |
+
+> **🆕 Apache Flink** được thêm vào để so sánh hiệu suất với Spark Streaming
 
 ## 📊 Cấu trúc Dữ liệu (Schema)
 
@@ -102,6 +119,50 @@ Start-Process "http://localhost:8080"
 Airflow UI, unpause các DAGs:
 - `gold_hourly_aggregation`
 - `gold_10min_aggregation`
+
+---
+
+## 🆕 **DEMO SO SÁNH SPARK vs FLINK**
+
+### Quick Start với Demo Script:
+
+```powershell
+# Chạy script demo tự động
+.\demo.ps1
+```
+
+Script sẽ:
+1. ✅ Khởi động tất cả services (Kafka, Spark, Flink, PostgreSQL)
+2. ✅ Chờ dữ liệu được xử lý
+3. ✅ Hiển thị menu tương tác để so sánh:
+   - Tổng quan dữ liệu
+   - So sánh độ trễ (Latency)
+   - So sánh thông lượng (Throughput)
+   - Xem logs và dashboards
+
+### Hoặc chạy thủ công:
+
+```powershell
+# 1. Khởi động hệ thống
+docker-compose up -d
+
+# 2. Kiểm tra Flink đang chạy
+docker logs flink-crypto-processor
+
+# 3. Truy cập Dashboards
+Start-Process "http://localhost:8082"  # Flink Dashboard
+Start-Process "http://localhost:8081"  # Spark UI
+
+# 4. So sánh dữ liệu
+docker exec -it postgres-db psql -U user -d crypto_data -f /sql/comparison_queries.sql
+```
+
+### 📊 Web Dashboards:
+- **Spark Master UI**: http://localhost:8081
+- **Flink Dashboard**: http://localhost:8082
+- **Airflow UI**: http://localhost:8080 (admin/admin)
+
+---
 
 ### Bước 5: Kiểm tra dữ liệu
 

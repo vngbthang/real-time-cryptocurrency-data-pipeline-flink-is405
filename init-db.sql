@@ -16,6 +16,25 @@ CREATE TABLE IF NOT EXISTS crypto_prices_realtime (
 CREATE INDEX IF NOT EXISTS idx_crypto_prices_symbol ON crypto_prices_realtime(symbol);
 CREATE INDEX IF NOT EXISTS idx_crypto_prices_processed_at ON crypto_prices_realtime(processed_at);
 
+-- Create table for Flink processed data (for comparison with Spark)
+CREATE TABLE IF NOT EXISTS crypto_prices_flink (
+    id SERIAL PRIMARY KEY,
+    timestamp BIGINT,
+    symbol VARCHAR(20),
+    base VARCHAR(10),
+    currency VARCHAR(10),
+    price DOUBLE PRECISION,
+    volume_24h DOUBLE PRECISION,
+    source VARCHAR(50),
+    iteration BIGINT,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create index for Flink table
+CREATE INDEX IF NOT EXISTS idx_crypto_prices_flink_symbol ON crypto_prices_flink(symbol);
+CREATE INDEX IF NOT EXISTS idx_crypto_prices_flink_processed_at ON crypto_prices_flink(processed_at);
+CREATE INDEX IF NOT EXISTS idx_crypto_prices_flink_timestamp ON crypto_prices_flink(timestamp);
+
 -- Create Gold layer hourly metrics table
 CREATE TABLE IF NOT EXISTS gold_hourly_metrics (
     id SERIAL PRIMARY KEY,
@@ -61,5 +80,6 @@ CREATE INDEX IF NOT EXISTS idx_gold_10min_symbol ON gold_10min_metrics(symbol);
 CREATE INDEX IF NOT EXISTS idx_gold_10min_window ON gold_10min_metrics(window_start);
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "user";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "user";
+
