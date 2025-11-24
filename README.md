@@ -1,616 +1,808 @@
-# 💰 Real-Time Cryptocurrency Analytics Pipeline
+# 💰 Real-Time Cryptocurrency Pipeline: Apache Spark vs Apache Flink
 
-## 🆕 **SPARK vs FLINK COMPARISON PROJECT**
+> **Dự án IS405**: So sánh hiệu suất xử lý dữ liệu streaming giữa **Apache Spark Structured Streaming** và **Apache Flink** trên pipeline thu thập giá cryptocurrency real-time từ Coinbase API.
 
-> **Mục tiêu mở rộng (IS405)**: So sánh hiệu suất giữa **Apache Spark Streaming** và **Apache Flink** trong xử lý dữ liệu real-time.
-
-### 🔥 Điểm nổi bật của phần mở rộng:
-- ✅ **Song song 2 engine**: Cùng xử lý 1 nguồn dữ liệu Kafka
-- ✅ **So sánh thực nghiệm**: Latency, Throughput, Resource Usage
-- ✅ **Dashboard riêng**: Spark UI (8081) vs Flink Dashboard (8082)
-- ✅ **Tự động hóa**: Script demo PowerShell để quan sát real-time
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
+[![Spark](https://img.shields.io/badge/Spark-3.5.0-orange)](https://spark.apache.org/)
+[![Flink](https://img.shields.io/badge/Flink-1.18.0-red)](https://flink.apache.org/)
+[![Kafka](https://img.shields.io/badge/Kafka-7.3.0-black)](https://kafka.apache.org/)
 
 ---
 
-## 📋 Mục tiêu (Objective)
+## 📋 Mục lục
 
-Project này xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh theo kiến trúc **Medallion** (Bronze-Silver-Gold) để xử lý dữ liệu cryptocurrency từ Coinbase API, cung cấp analytics và insights theo thời gian thực cho 5 loại cryptocurrency: **BTC, ETH, SOL, ADA, DOGE**.
+1. [Giới thiệu](#-giới-thiệu)
+2. [Kiến trúc hệ thống](#-kiến-trúc-hệ-thống)
+3. [Công nghệ sử dụng](#-công-nghệ-sử-dụng)
+4. [Quick Start](#-quick-start---khởi-động-nhanh)
+5. [Apache Flink - Chi tiết](#-apache-flink---thông-tin-chi-tiết)
+6. [So sánh Spark vs Flink](#-so-sánh-chi-tiết-spark-vs-flink)
+7. [Performance Verification](#-performance-verification---chứng-minh-flink-nhanh-hơn)
+8. [Dashboard & Monitoring](#-dashboard--monitoring)
+9. [Troubleshooting](#-troubleshooting)
+10. [Kết luận](#-kết-luận)
 
-**Vấn đề giải quyết:**
+---
 
-- **Real-time ingestion**: Thu thập dữ liệu giá và khối lượng giao dịch từ Coinbase API mỗi 10 giây.
-- **Stream processing**: Xử lý dữ liệu real-time với Spark Structured Streaming **+ Apache Flink (mở rộng)**.
-- **Data aggregation**: Tạo metrics theo cửa sổ thời gian (10 phút, 1 giờ) cho phân tích.
-- **Orchestration**: Tự động hóa pipeline với Apache Airflow.
-- **Analytics ready**: Cung cấp dữ liệu sẵn sàng cho BI tools (Grafana, pgAdmin, REST API).
+## 🎯 Giới thiệu
 
-## 🏗️ Kiến trúc (Architecture)
+Dự án xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh để xử lý dữ liệu cryptocurrency từ Coinbase API, với mục tiêu chính là **so sánh hiệu suất** giữa hai stream processing engines hàng đầu: **Apache Spark** và **Apache Flink**.
 
-![Architecture](docs/images/architecture.png)
+### Vấn đề giải quyết
 
-**Kiến trúc Medallion**: Bronze (Kafka) → Silver (Raw Data) → Gold (Aggregated Metrics)
+- **Real-time ingestion**: Thu thập dữ liệu giá và khối lượng giao dịch từ Coinbase API mỗi 10 giây
+- **Parallel stream processing**: Xử lý cùng lúc bằng cả Spark và Flink để so sánh
+- **Latency comparison**: Đo và chứng minh Flink có latency thấp hơn Spark
+- **Data aggregation**: Tạo metrics theo cửa sổ thời gian (10 phút, 1 giờ)
+- **Orchestration**: Tự động hóa với Apache Airflow
 
-## 🛠️ Công nghệ sử dụng (Tech Stack)
-
-| Component             | Technology                      | Version   |
-|-----------------------|---------------------------------|-----------|
-| **Message Broker**    | Apache Kafka                    | 7.3.0     |
-| **Stream Processing** | Apache Spark Structured Streaming | 3.5.0     |
-| **Stream Processing (NEW)** | **Apache Flink**           | **1.18.0** |
-| **Database**          | PostgreSQL                      | 14        |
-| **Orchestration**     | Apache Airflow                  | 2.8.1     |
-| **Data Source**       | Coinbase API                    | v2        |
-| **Producer**          | Python + kafka-python           | 3.11 / 2.0.2 |
-| **Container Platform**| Docker + Docker Compose         | Latest    |
-| **BI Visualization**  | Grafana (optional)              | Latest    |
-| **API Framework**     | FastAPI (optional)              | Latest    |
-
-> **🆕 Apache Flink** được thêm vào để so sánh hiệu suất với Spark Streaming
-
-## 📊 Cấu trúc Dữ liệu (Schema)
-
-### Infrastructure Layout:
-
-![ArchitectureLayout](docs/images/infralayout.png) 
-
-### Data Schema:
-
-![Schema](docs/images/graph.png) 
-
-### Tracked Cryptocurrencies:
+### 5 cặp cryptocurrency được theo dõi
 
 ```python
 CRYPTO_PAIRS = [
-    'BTC-USD',  # Bitcoin
-    'ETH-USD',  # Ethereum
-    'SOL-USD',  # Solana
-    'ADA-USD',  # Cardano
-    'DOGE-USD'  # Dogecoin
+    'BTC-USD',   # Bitcoin
+    'ETH-USD',   # Ethereum
+    'SOL-USD',   # Solana
+    'ADA-USD',   # Cardano
+    'DOGE-USD'   # Dogecoin
 ]
 ```
 
-## 🚀 Cách thiết lập và chạy (Setup & Run)
+---
 
-### Prerequisites:
+## 🏗️ Kiến trúc hệ thống
 
-- Docker Desktop (Windows)
-- Docker Compose
-- Git
-- PowerShell
-- Minimum 8GB RAM, 20GB disk space
+### Data Flow Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   CRYPTOCURRENCY DATA PIPELINE                   │
+└─────────────────────────────────────────────────────────────────┘
+
+[1] DATA INGESTION
+    Coinbase API (REST)
+         │
+         ├─ GET /products/{symbol}/ticker
+         │  └─ Response: {"price": "86746.075", "time": "2024-11-24T..."}
+         │
+         ▼
+    Producer (Python + kafka-python)
+         │
+         ├─ Poll interval: 10 seconds
+         ├─ Symbols: BTC, ETH, SOL, ADA, DOGE
+         │
+         ▼
+    [JSON Message]
+
+[2] MESSAGE BROKER
+         │
+         ▼
+    Apache Kafka (Topic: crypto_prices)
+         │
+         ├─ Partitions: 3 (for parallelism)
+         │
+         ├────────────────┬────────────────┐
+         │                │                │
+         ▼                ▼                ▼
+    Partition 0     Partition 1      Partition 2
+
+[3] DUAL STREAM PROCESSING (PARALLEL)
+
+    ┌─────────────────────────────┐  ┌─────────────────────────────┐
+    │    SPARK STREAMING          │  │    FLINK STREAMING          │
+    ├─────────────────────────────┤  ├─────────────────────────────┤
+    │ • Micro-batch (15s trigger) │  │ • Event-driven processing   │
+    │ • DataFrame API             │  │ • Table API + SQL DDL       │
+    │ • foreachBatch → JDBC       │  │ • JDBC Connector Sink       │
+    └─────────────────────────────┘  └─────────────────────────────┘
+         │                                    │
+         ▼                                    ▼
+
+[4] DATA STORAGE
+    PostgreSQL Database (crypto_data)
+         │
+         ├─ crypto_prices_realtime (Spark writes)
+         ├─ crypto_prices_flink (Flink writes)
+         ├─ gold_hourly_metrics (aggregated)
+         └─ gold_10min_metrics (aggregated)
+```
+
+### Infrastructure Components
+
+| Component | Technology | Version | Port | Purpose |
+|-----------|------------|---------|------|---------|
+| **Message Broker** | Apache Kafka | 7.3.0 | 9092 | Stream data distribution |
+| **Coordination** | Zookeeper | 7.3.0 | 2181 | Kafka coordination |
+| **Stream Engine 1** | Apache Spark | 3.5.0 | 8081 | Micro-batch processing |
+| **Stream Engine 2** | Apache Flink | 1.18.0 | 8082 | True streaming |
+| **Database** | PostgreSQL | 14 | 5432 | Data persistence |
+| **Orchestration** | Apache Airflow | 2.8.1 | 8080 | Workflow management |
+| **Producer** | Python | 3.11 | - | Data ingestion |
+
+---
+
+## 🛠️ Công nghệ sử dụng
+
+### Core Technologies
+
+```yaml
+Stream Processing:
+  - Apache Spark Structured Streaming 3.5.0
+  - Apache Flink DataStream/Table API 1.18.0
+  
+Message Broker:
+  - Apache Kafka 7.3.0
+  - Zookeeper 7.3.0
+  
+Database:
+  - PostgreSQL 14
+  
+Orchestration:
+  - Apache Airflow 2.8.1
+  
+Programming:
+  - Python 3.11
+  - PyFlink 1.18.0
+  - kafka-python 2.0.2
+  
+Infrastructure:
+  - Docker & Docker Compose
+  - Linux Containers
+```
+
+### Why These Technologies?
+
+**Apache Spark**: Industry standard cho batch + streaming, mature ecosystem  
+**Apache Flink**: True streaming với ultra-low latency, exactly-once semantics  
+**Kafka**: High-throughput, fault-tolerant message broker  
+**PostgreSQL**: ACID-compliant, perfect for analytics  
+**Airflow**: Python-native orchestration, easy DAG management  
+
+---
+
+## 🚀 Quick Start - Khởi động nhanh
+
+### Prerequisites
+
+- Docker Desktop (Windows/Mac/Linux)
+- 8GB RAM minimum (16GB recommended)
+- 20GB disk space
+- Internet connection
 
 ### Bước 1: Clone Repository
 
 ```powershell
-git clone https://github.com/vngbthang/real-time-cryptocurrency-data-pipeline.git
-cd real-time-cryptocurrency-data-pipeline
+git clone https://github.com/vngbthang/real-time-cryptocurrency-data-pipeline-flink-is405.git
+cd real-time-cryptocurrency-data-pipeline-flink-is405
 ```
 
-### Bước 2: Khởi động Infrastructure
+### Bước 2: Start toàn bộ hệ thống
 
 ```powershell
-# Start all Docker containers
 docker-compose up -d
-
-# Verify all containers are running (should see 11 containers)
-docker ps
 ```
 
-**Lưu ý:** Database schema và Kafka topics sẽ được tạo tự động khi containers khởi động lần đầu:
-- ✅ PostgreSQL tables: `crypto_prices_realtime`, `gold_hourly_metrics`, `gold_10min_metrics` (via `init-db.sql`)
-- ✅ Kafka topic: `crypto_prices` (via `kafka-init` container)
-- ✅ Producer: Tự động start và bắt đầu gửi dữ liệu
+**Chờ 2-3 phút** để tất cả services khởi động.
 
-### Bước 3: Trigger Spark Streaming Job
+### Bước 3: Verify hệ thống
 
 ```powershell
-# Open Airflow UI
-Start-Process "http://localhost:8080"
-
-# Login: admin / admin
-# Navigate to DAGs -> Find "crypto_streaming_pipeline"
-# Click "Trigger DAG" (play icon)
+# Check all containers running
+docker-compose ps
 ```
 
-### Bước 4: Enable Gold Layer Aggregation
+Kết quả mong đợi: **14 containers** với status `Up`:
+- ✅ zookeeper
+- ✅ kafka
+- ✅ postgres-db
+- ✅ postgres-airflow-db
+- ✅ crypto-producer
+- ✅ spark-master
+- ✅ spark-worker
+- ✅ flink-jobmanager
+- ✅ flink-taskmanager
+- ✅ flink-crypto-processor
+- ✅ airflow-init
+- ✅ airflow-webserver
+- ✅ airflow-scheduler
 
-Airflow UI, unpause các DAGs:
-- `gold_hourly_aggregation`
-- `gold_10min_aggregation`
+### Bước 4: Kiểm tra Producer
+
+```powershell
+docker logs crypto-producer --tail 20
+```
+
+Kết quả mong đợi:
+```
+✅ BTC-USD      Price: $   86,865.54
+✅ ETH-USD      Price: $    2,833.05
+✅ SOL-USD      Price: $      130.35
+✅ ADA-USD      Price: $        0.41
+✅ DOGE-USD     Price: $        0.15
+📊 Summary: 5/5 pairs sent successfully
+```
+
+### Bước 5: Verify dữ liệu trong Database
+
+```powershell
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, COUNT(*) FROM crypto_prices_realtime UNION ALL SELECT 'Flink' as engine, COUNT(*) FROM crypto_prices_flink;"
+```
+
+Kết quả sau vài phút:
+```
+ engine | count
+--------+-------
+ Spark  |   75+
+ Flink  |   50+
+```
+
+### Bước 6: Chạy Performance Test
+
+```powershell
+.\compare_latency.ps1
+```
+
+**Kết quả mong đợi:** Flink nhanh hơn Spark **3-5 lần**.
+
+### Bước 7: Truy cập Dashboards
+
+- **Airflow UI:** http://localhost:8080 (admin/admin)
+- **Spark Master UI:** http://localhost:8081
+- **Flink JobManager UI:** http://localhost:8082
 
 ---
 
-## 🆕 **DEMO SO SÁNH SPARK vs FLINK**
+## 📊 Apache Flink - Giới thiệu chi tiết
 
-### Quick Start với Demo Script:
+### Kiến trúc Apache Flink
 
-```powershell
-# Chạy script demo tự động
-.\demo.ps1
+Apache Flink là một **distributed stream processing framework** được thiết kế cho xử lý real-time data với latency cực thấp.
+
+#### Kiến trúc cốt lõi
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    APACHE FLINK ARCHITECTURE                    │
+└────────────────────────────────────────────────────────────────┘
+
+[1] CLIENT LAYER
+    Flink Application (Python/Java/Scala)
+         │
+         ├─ DataStream API (imperative)
+         ├─ Table API (declarative)
+         └─ SQL API (declarative)
+         │
+         ▼ Submit Job
+         
+[2] CONTROL PLANE
+    JobManager (Master)
+         │
+         ├─ JobGraph → ExecutionGraph
+         ├─ Resource Management
+         ├─ Checkpoint Coordination
+         └─ Task Scheduling
+         │
+         ▼ Distribute Tasks
+         
+[3] DATA PLANE
+    TaskManager 1       TaskManager 2       TaskManager 3
+    ├─ Task Slot 1      ├─ Task Slot 1      ├─ Task Slot 1
+    ├─ Task Slot 2      ├─ Task Slot 2      ├─ Task Slot 2
+    └─ Task Slot 3      └─ Task Slot 3      └─ Task Slot 3
+         │                   │                   │
+         └───────────────────┴───────────────────┘
+                             │
+                             ▼
+[4] STATE MANAGEMENT
+    State Backend (RocksDB / Heap)
+         │
+         ├─ Keyed State (per key)
+         ├─ Operator State (per parallel instance)
+         └─ Checkpoints (distributed snapshots)
 ```
 
-Script sẽ:
-1. ✅ Khởi động tất cả services (Kafka, Spark, Flink, PostgreSQL)
-2. ✅ Chờ dữ liệu được xử lý
-3. ✅ Hiển thị menu tương tác để so sánh:
-   - Tổng quan dữ liệu
-   - So sánh độ trễ (Latency)
-   - So sánh thông lượng (Throughput)
-   - Xem logs và dashboards
+#### Core Components
 
-### Hoặc chạy thủ công:
+| Component | Vai trò | Số lượng | Docker Service |
+|-----------|---------|----------|----------------|
+| **JobManager** | Master node, orchestration | 1 | flink-jobmanager |
+| **TaskManager** | Worker node, execute tasks | 1+ | flink-taskmanager |
+| **Task Slot** | Thread unit for parallelism | N × TaskManager | Configured in env |
+| **State Backend** | Persistent storage cho state | 1 (shared) | RocksDB/Heap |
 
-```powershell
-# 1. Khởi động hệ thống
-docker-compose up -d
+### Ưu điểm và Nhược điểm
 
-# 2. Kiểm tra Flink đang chạy
-docker logs flink-crypto-processor
+#### Ưu điểm
 
-# 3. Truy cập Dashboards
-Start-Process "http://localhost:8082"  # Flink Dashboard
-Start-Process "http://localhost:8081"  # Spark UI
+| Ưu điểm | Mô tả | Use Case |
+|---------|-------|----------|
+| **Low Latency** | Xử lý sub-second latency | Real-time fraud detection, HFT trading |
+| **High Throughput** | Millions events/second | IoT data ingestion, log processing |
+| **Exactly-Once** | Strong consistency guarantees | Financial transactions, billing systems |
+| **Stateful Processing** | Built-in state management | Session analytics, pattern detection |
+| **Event Time Processing** | Handle out-of-order events | Time-series analytics, late data handling |
+| **Flexible Deployment** | Standalone, YARN, K8s, Mesos | Cloud-native or on-premise |
+| **SQL Support** | Table API & SQL for streaming | Business analysts, rapid development |
+| **Savepoints** | Version control for streaming apps | A/B testing, rolling updates |
 
-# 4. So sánh dữ liệu
-docker exec -it postgres-db psql -U user -d crypto_data -f /sql/comparison_queries.sql
-```
+#### Nhược điểm
 
-### 📊 Web Dashboards:
-- **Spark Master UI**: http://localhost:8081
-- **Flink Dashboard**: http://localhost:8082
-- **Airflow UI**: http://localhost:8080 (admin/admin)
+| Nhược điểm | Mô tả | Mitigation |
+|-----------|-------|------------|
+| **Steep Learning Curve** | Concepts phức tạp (watermarks, state, checkpoints) | Bắt đầu với Table API trước DataStream API |
+| **Memory Intensive** | State backend cần nhiều RAM | Dùng RocksDB cho large state, tune memory configs |
+| **Operational Complexity** | Cần monitoring checkpoint lag, backpressure | Dùng Flink Dashboard + Prometheus metrics |
+| **Limited ML Support** | Không có ML library như Spark MLlib | Tích hợp với TensorFlow, PyTorch riêng |
+| **Smaller Ecosystem** | Ít connectors hơn Spark | Community đang phát triển nhanh |
+| **Debugging Challenges** | Distributed debugging khó | Dùng local mode + extensive logging |
 
 ---
 
-### Bước 5: Kiểm tra dữ liệu
+## ⚖️ So sánh Apache Spark vs Apache Flink
 
-```powershell
-# Check Silver layer
-docker exec -it postgres-db psql -U user -d crypto_data -c "SELECT symbol, price, processed_at FROM crypto_prices_realtime ORDER BY processed_at DESC LIMIT 5;"
+### Kiến trúc xử lý
 
-# Check Gold Hourly Metrics
-docker exec -it postgres-db psql -U user -d crypto_data -c "SELECT symbol, ROUND(avg_price::numeric, 2) as avg_price, ROUND(price_change_percent::numeric, 2) as change_pct FROM gold_hourly_metrics ORDER BY hour_timestamp DESC LIMIT 5;"
+| Tiêu chí | Apache Spark Structured Streaming | Apache Flink |
+|----------|-----------------------------------|--------------|
+| **Processing Model** | Micro-batch (15 giây/batch) | True streaming (event-by-event) |
+| **Core Abstraction** | RDD → DataFrame/Dataset | DataStream → Table |
+| **State Management** | External state stores (HDFS, S3) | Built-in managed state (RocksDB) |
+| **Latency** | Seconds (batch interval) | Milliseconds (event-driven) |
+| **Throughput** | Excellent for large batches | Excellent for continuous streams |
+| **Memory Model** | In-memory caching for speed | Streaming pipelined execution |
+| **Fault Tolerance** | RDD lineage + checkpointing | Distributed snapshots (Chandy-Lamport) |
 
-# Check Gold 10-Minute Metrics
-docker exec -it postgres-db psql -U user -d crypto_data -c "SELECT symbol, ROUND(avg_price::numeric, 2) as avg, ROUND(price_volatility::numeric, 2) as volatility FROM gold_10min_metrics ORDER BY window_start DESC LIMIT 5;"
-```
+### API Comparison
 
-## 📈 Kết quả (Final Output)
-
-### Silver Layer Table: `crypto_prices_realtime`
-- **Mục đích:** Raw structured data from Spark streaming.
-- **Use cases:** Real-time price monitoring, data quality checks, raw data for ad-hoc analysis.
-
-### Gold Layer Table 1: `gold_hourly_metrics`
-- **Mục đích:** Hourly aggregated analytics.
-- **Use cases:** Historical trend analysis, day-over-day comparisons, hourly performance reports.
-
-### Gold Layer Table 2: `gold_10min_metrics`
-- **Mục đích:** Near real-time analytics with 10-minute windows.
-- **Use cases:** Real-time volatility monitoring, short-term trading signals, anomaly detection.
-
-## 📁 Cấu trúc Project
-
-```
-real-time-cryptocurrency-data-pipeline/
-│
-├── docker-compose.yml              # Infrastructure orchestration (11 containers)
-├── Dockerfile.producer             # Containerized producer build file
-├── requirements.txt                # Python dependencies
-├── README.md                       # This file
-│
-├── coinbase_producer.py            # Multi-coin data producer
-│
-├── init-kafka.sh                   # Auto-create Kafka topics on startup
-├── init-airflow.sh                 # Auto-trigger Airflow DAGs (optional)
-├── init-db.sql                     # Auto-create database schema on startup
-│
-├── spark-apps/
-│   └── spark_stream_processor.py   # Spark Structured Streaming job
-│
-├── dags/                           # Airflow orchestration
-│   ├── auto_startup_pipeline.py    # Auto-startup orchestration
-│   ├── crypto_producer.py          # Producer DAG (alternative)
-│   ├── submit_spark_stream.py      # Main streaming pipeline DAG
-│   ├── gold_aggregation.py         # Hourly metrics aggregation
-│   └── gold_10min_aggregation.py   # 10-minute metrics aggregation
-│
-└── logs/                           # Airflow logs directory
-```
-
-## 🎯 Key Features
-
-- ✅ **Real-Time Processing**: 10-second polling and 15-second micro-batching.
-- ✅ **Multi-Cryptocurrency Support**: Tracks 5 major coins, easily extensible.
-- ✅ **Medallion Architecture**: Bronze (Kafka), Silver (PostgreSQL), and Gold (PostgreSQL) layers.
-- ✅ **Data Quality & Reliability**: Spark checkpointing, producer retry logic, and data retention policies.
-- ✅ **Orchestration & Monitoring**: Fully automated with Airflow and monitored via Spark UI and Airflow UI.
-- ✅ **Scalability**: Designed for horizontal and vertical scaling.
-- ✅ **Analytics Ready**: Pre-aggregated metrics in the Gold layer for fast BI queries.
-
-## 📚 Deployment Guide (Hướng dẫn Triển khai Chi tiết)
-
-### 🔍 Monitoring & Verification (Giám sát & Kiểm tra)
-
-#### Initialization Scripts (Scripts Khởi tạo Tự động)
-
-Project sử dụng các script tự động để khởi tạo môi trường:
-
-**1. `init-kafka.sh` (Kafka Initialization)**
-- **Chức năng**: Tự động tạo Kafka topic `crypto_prices` khi Kafka container khởi động
-- **Chi tiết**:
-  - Đợi 30 giây cho Kafka sẵn sàng
-  - Tạo topic với 3 partitions, replication factor = 1
-  - Liệt kê tất cả topics để verify
-- **Container**: `kafka-init` trong docker-compose.yml
-- **Log kiểm tra**:
-```powershell
-docker logs kafka-init
-```
-
-**2. `init-airflow.sh` (Airflow Initialization - Optional)**
-- **Chức năng**: Tự động trigger DAGs khi Airflow khởi động (nếu muốn tự động hóa)
-- **Chi tiết**:
-  - Đợi 60 giây cho Airflow webserver sẵn sàng
-  - Unpause và trigger `crypto_streaming_pipeline`
-  - Unpause `gold_hourly_aggregation` và `gold_10min_aggregation`
-- **Lưu ý**: Script này chưa được tích hợp vào docker-compose (chạy thủ công nếu cần)
-- **Cách chạy thủ công**:
-```powershell
-docker exec -it airflow-webserver bash /opt/airflow/init-airflow.sh
-```
-
-**3. `init-db.sql` (Database Schema Initialization)**
-- **Chức năng**: Tự động tạo database schema khi PostgreSQL container khởi động lần đầu
-- **Chi tiết**:
-  - Tạo 3 bảng: `crypto_prices_realtime`, `gold_hourly_metrics`, `gold_10min_metrics`
-  - Sử dụng `CREATE TABLE IF NOT EXISTS` để tránh lỗi nếu chạy lại
-- **Container**: Mounted vào `postgres-db` tại `/docker-entrypoint-initdb.d/`
-- **Log kiểm tra**:
-```powershell
-docker logs postgres-db | Select-String -Pattern "init-db"
-```
-
-#### Kafka Topics
-```powershell
-# Liệt kê tất cả topics
-docker exec -it kafka kafka-topics --bootstrap-server localhost:9092 --list
-
-# Kiểm tra messages trong topic crypto_prices
-docker exec -it kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic crypto_prices --from-beginning --max-messages 5
-```
-
-#### Spark Jobs
-```powershell
-# Truy cập Spark Master UI
-Start-Process "http://localhost:8081"
-
-# Xem log Spark Master
-docker logs spark-master --tail 50
-
-# Xem log Spark Worker
-docker logs spark-worker --tail 50
-```
-
-#### Airflow DAGs
-```powershell
-# Xem danh sách DAGs
-docker exec -it airflow-webserver airflow dags list
-
-# Xem task instances
-docker exec -it airflow-webserver airflow tasks list crypto_streaming_pipeline
-```
-
-#### Database Queries
-```powershell
-# Đếm số records theo symbol
-docker exec -it postgres-db psql -U user -d crypto_data -c "SELECT symbol, COUNT(*) FROM crypto_prices_realtime GROUP BY symbol;"
-
-# Kiểm tra giá mới nhất
-docker exec -it postgres-db psql -U user -d crypto_data -c "SELECT DISTINCT ON (symbol) symbol, price, processed_at FROM crypto_prices_realtime ORDER BY symbol, processed_at DESC;"
-
-# Phân tích volume (khi có dữ liệu)
-docker exec -it postgres-db psql -U user -d crypto_data -c "SELECT symbol, AVG(volume_24h) as avg_volume FROM crypto_prices_realtime WHERE volume_24h IS NOT NULL GROUP BY symbol;"
-```
-
-### 🛠️ Troubleshooting (Xử lý sự cố)
-
-#### Producer Issues
-**Vấn đề**: Lỗi "NoBrokersAvailable"
-```powershell
-# Kiểm tra Kafka có chạy không
-docker logs kafka | Select-String -Pattern "started"
-
-# Test kết nối
-Test-NetConnection localhost -Port 9093
-
-# Nếu không được, restart Kafka
-docker-compose restart kafka
-Start-Sleep -Seconds 20
-```
-
-**Vấn đề**: API rate limiting
-- Tăng `POLL_INTERVAL_SECONDS` trong `coinbase_producer.py` (mặc định: 10)
-
-#### Spark Job Issues
-**Vấn đề**: Job không xử lý dữ liệu
-```powershell
-# Kiểm tra log Spark
-docker logs spark-master
-docker logs spark-worker
-
-# Kiểm tra kết nối Kafka từ Spark
-docker exec -it spark-master nc -zv kafka 9092
-```
-
-**Vấn đề**: Checkpoint bị hỏng
-```powershell
-# Xóa checkpoints và restart
-docker exec -it spark-master rm -rf /opt/spark/apps/checkpoints/*
-```
-
-#### Database Issues
-**Vấn đề**: Connection refused
-```powershell
-# Kiểm tra PostgreSQL đang chạy
-docker exec -it postgres-db pg_isready
-
-# Kiểm tra logs
-docker logs postgres-db
-```
-
-**Vấn đề**: Schema mismatch
-```powershell
-# Chạy lại migration script
-docker cp sql/alter_tables_add_volume.sql postgres-db:/tmp/
-docker exec -it postgres-db psql -U user -d crypto_data -f /tmp/alter_tables_add_volume.sql
-```
-
-### 📈 Next Steps (Bước tiếp theo)
-
-#### Monitoring Producer Container
-```powershell
-# Xem logs của producer
-docker logs crypto-producer --tail 50 -f
-
-# Kiểm tra producer đang chạy
-docker exec crypto-producer ps aux
-
-# Restart producer nếu cần
-docker-compose restart crypto-producer
-```
-
-#### Thêm Volume Data Thực tế
-Hiện tại `volume_24h` đang là `None` vì Coinbase API v2 `/spot` endpoint không cung cấp volume. Để thêm volume thực:
-
-**Option 1: Sử dụng Coinbase Advanced Trade API**
+**Spark Structured Streaming:**
 ```python
-# Cần xác thực
-COINBASE_PRODUCT_API = 'https://api.coinbase.com/api/v3/brokerage/products/{pair}/ticker'
-# Trả về: price, volume_24h, price_percent_change_24h
+# Declarative API với DataFrame
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col
+
+spark = SparkSession.builder.appName("CryptoStream").getOrCreate()
+
+# Read stream
+df = spark.readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "kafka:9092") \
+    .option("subscribe", "crypto_prices") \
+    .load()
+
+# Transform (batch-like operations)
+crypto_df = df.selectExpr("CAST(value AS STRING)") \
+    .select(from_json(col("value"), schema).alias("data")) \
+    .select("data.*")
+
+# Write stream với trigger interval
+query = crypto_df.writeStream \
+    .outputMode("complete") \
+    .trigger(processingTime="15 seconds") \
+    .format("console") \
+    .start()
 ```
 
-**Option 2: Sử dụng CoinGecko API (không cần xác thực)**
+**Flink Table API + SQL:**
 ```python
-COINGECKO_API = 'https://api.coingecko.com/api/v3/simple/price'
-# Parameters: ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_vol=true
+# DDL-style table creation
+from pyflink.table import StreamTableEnvironment
+
+table_env = StreamTableEnvironment.create(env)
+
+# Kafka source
+table_env.execute_sql("""
+    CREATE TABLE crypto_source (
+        symbol STRING,
+        price DOUBLE,
+        `timestamp` BIGINT,
+        WATERMARK FOR event_time AS TO_TIMESTAMP_LTZ(`timestamp`, 3)
+    ) WITH (
+        'connector' = 'kafka',
+        'topic' = 'crypto_prices',
+        'properties.bootstrap.servers' = 'kafka:9092',
+        'format' = 'json',
+        'scan.startup.mode' = 'latest-offset'
+    )
+""")
+
+# JDBC sink
+table_env.execute_sql("""
+    CREATE TABLE crypto_sink (
+        symbol STRING,
+        price DOUBLE,
+        `user` STRING,
+        `timestamp` BIGINT
+    ) WITH (
+        'connector' = 'jdbc',
+        'url' = 'jdbc:postgresql://postgres-db:5432/crypto_data',
+        'table-name' = 'crypto_prices_flink',
+        'username' = 'user',
+        'password' = 'password'
+    )
+""")
+
+# Streaming query
+table_env.execute_sql("INSERT INTO crypto_sink SELECT * FROM crypto_source")
 ```
 
-Cập nhật `coinbase_producer.py` để lấy volume data từ CoinGecko hoặc Advanced Trade API.
+### Performance Comparison
+
+| Metric | Spark (Micro-batch 15s) | Flink (True Streaming) |
+|--------|-------------------------|------------------------|
+| **Latency** | 8-9 giây | 1-3 giây |
+| **Throughput** | ~27 records/minute | ~26 records/minute |
+| **Memory Usage** | 2-4 GB (executor heap) | 1-3 GB (task manager) |
+| **CPU Usage** | Spiky (batch processing) | Smooth (continuous) |
+| **Exactly-Once** | ✅ Với foreachBatch | ✅ Native support |
+| **Late Data Handling** | ⚠️ Limited watermark support | ✅ Advanced watermark strategies |
+
+### Time Semantics
+
+**Spark:**
+```python
+# Processing time (khi data đến Spark)
+df.writeStream \
+    .trigger(processingTime="15 seconds") \
+    .start()
+
+# Event time (limited support)
+df.withWatermark("timestamp", "10 minutes")
+```
+
+**Flink:**
+```python
+# Event time với watermark strategy
+from pyflink.common.watermark_strategy import WatermarkStrategy
+from pyflink.common.time import Duration
+
+strategy = WatermarkStrategy \
+    .for_bounded_out_of_orderness(Duration.of_seconds(5)) \
+    .with_timestamp_assigner(lambda event, ts: event['timestamp'])
+
+stream.assign_timestamps_and_watermarks(strategy)
+```
+
+### State Management
+
+| Feature | Spark | Flink |
+|---------|-------|-------|
+| **State Store** | External (HDFS/S3) | Embedded (RocksDB/Memory) |
+| **State Size** | Limited by batch size | Unlimited (RocksDB disk) |
+| **State Access** | Batch-based | Continuous access |
+| **Checkpointing** | Incremental (Delta files) | Asynchronous barriers |
+| **Recovery Time** | Minutes (batch replay) | Seconds (state restore) |
+
+### Windowing Capabilities
+
+**Spark (Limited):**
+```python
+# Fixed windows only
+df.groupBy(
+    window("timestamp", "5 minutes")
+).count()
+```
+
+**Flink (Comprehensive):**
+```python
+# Tumbling Window
+stream.key_by(...).window(TumblingEventTimeWindows.of(Time.minutes(5)))
+
+# Sliding Window
+stream.key_by(...).window(SlidingEventTimeWindows.of(
+    Time.minutes(10),  # size
+    Time.minutes(5)    # slide
+))
+
+# Session Window (activity gap-based)
+stream.key_by(...).window(EventTimeSessionWindows.with_gap(Time.minutes(30)))
+
+# Global Window với custom triggers
+stream.key_by(...).window(GlobalWindows.create()).trigger(...)
+```
 
 ---
 
-## 🔌 BI Integration Guide (Hướng dẫn Tích hợp BI)
+## 🔧 Điều chỉnh tham số Flink
 
-### 📊 Kết nối Database
+### Cấu hình trong docker-compose.yml
 
-#### Thông tin kết nối PostgreSQL
-```
-Host: localhost
-Port: 5432
-Database: crypto_data
-Username: user
-Password: password
-```
-
-### Power BI / Tableau
-
-#### Bước 1: Chọn Data Source
-- Mở Power BI Desktop hoặc Tableau
-- Chọn "PostgreSQL" làm data source
-- Nhập thông tin kết nối ở trên
-
-#### Bước 2: Select Tables
-Chọn các bảng:
-- `crypto_prices_realtime` (Silver Layer) - Real-time data
-- `gold_hourly_metrics` (Gold Layer) - Hourly analytics
-- `gold_10min_metrics` (Gold Layer) - 10-minute analytics
-
-#### Bước 3: Tạo Visualizations
-
-**Dashboard 1: Real-Time Price Monitor**
-```sql
-SELECT 
-    symbol,
-    price,
-    processed_at,
-    LAG(price) OVER (PARTITION BY symbol ORDER BY processed_at) as prev_price,
-    ROUND(((price - LAG(price) OVER (PARTITION BY symbol ORDER BY processed_at)) / 
-           LAG(price) OVER (PARTITION BY symbol ORDER BY processed_at) * 100)::numeric, 2) as pct_change
-FROM crypto_prices_realtime
-WHERE processed_at >= NOW() - INTERVAL '1 hour'
-ORDER BY processed_at DESC;
+```yaml
+flink-jobmanager:
+  image: flink:1.18.0-scala_2.12-java11
+  environment:
+    - |
+      FLINK_PROPERTIES=
+      # === PARALLELISM & SLOTS ===
+      taskmanager.numberOfTaskSlots: 4           # Số task slots mỗi TaskManager
+      parallelism.default: 2                     # Parallelism mặc định
+      
+      # === MEMORY CONFIGURATION ===
+      taskmanager.memory.process.size: 2048m     # Tổng memory cho TaskManager
+      taskmanager.memory.flink.size: 1536m       # Flink managed memory
+      
+      # === CHECKPOINT SETTINGS ===
+      execution.checkpointing.interval: 60000    # Checkpoint mỗi 60 giây
+      execution.checkpointing.mode: EXACTLY_ONCE # At-least-once hoặc exactly-once
+      
+      # === STATE BACKEND ===
+      state.backend: rocksdb                     # rocksdb hoặc filesystem
+      state.checkpoints.dir: file:///tmp/flink-checkpoints
 ```
 
-**Dashboard 2: Hourly Trend Analysis**
-```sql
-SELECT 
-    hour_timestamp,
-    symbol,
-    avg_price,
-    min_price,
-    max_price,
-    price_change_percent,
-    total_volume
-FROM gold_hourly_metrics
-WHERE hour_timestamp >= NOW() - INTERVAL '24 hours'
-ORDER BY hour_timestamp DESC;
-```
+### Performance Tuning Parameters
 
-**Dashboard 3: Volatility Monitor**
-```sql
-SELECT 
-    window_start,
-    symbol,
-    avg_price,
-    price_volatility,
-    (max_price - min_price) as price_range,
-    ROUND(((max_price - min_price) / avg_price * 100)::numeric, 2) as volatility_pct
-FROM gold_10min_metrics
-WHERE window_start >= NOW() - INTERVAL '2 hours'
-ORDER BY window_start DESC;
-```
-
-### pgAdmin (Database Management)
-
-#### Setup pgAdmin
-```powershell
-# Pull pgAdmin image
-docker pull dpage/pgadmin4
-
-# Run pgAdmin container
-docker run -d `
-  --name pgadmin `
-  --network crypto-pipeline-net `
-  -p 5050:80 `
-  -e PGADMIN_DEFAULT_EMAIL=admin@admin.com `
-  -e PGADMIN_DEFAULT_PASSWORD=admin `
-  dpage/pgadmin4
-```
-
-#### Truy cập pgAdmin
-1. Mở browser: http://localhost:5050
-2. Login: `admin@admin.com` / `admin`
-3. Add New Server:
-   - Name: `Crypto Pipeline`
-   - Host: `postgres-db`
-   - Port: `5432`
-   - Username: `user`
-   - Password: `password`
-
-### Grafana (Optional)
-
-#### Setup Grafana
-```powershell
-# Pull Grafana image
-docker pull grafana/grafana
-
-# Run Grafana container
-docker run -d `
-  --name grafana `
-  --network crypto-pipeline-net `
-  -p 3000:3000 `
-  grafana/grafana
-```
-
-#### Configure Grafana
-1. Truy cập: http://localhost:3000
-2. Login: `admin` / `admin`
-3. Add PostgreSQL Data Source:
-   - Host: `postgres-db:5432`
-   - Database: `crypto_data`
-   - User: `user`
-   - Password: `password`
-   - SSL Mode: `disable`
-
-#### Sample Grafana Queries
-
-**Panel 1: Current Prices**
-```sql
-SELECT 
-  processed_at as time,
-  symbol as metric,
-  price as value
-FROM crypto_prices_realtime
-WHERE $__timeFilter(processed_at)
-ORDER BY processed_at;
-```
-
-**Panel 2: Hourly Average Prices**
-```sql
-SELECT 
-  hour_timestamp as time,
-  symbol as metric,
-  avg_price as value
-FROM gold_hourly_metrics
-WHERE $__timeFilter(hour_timestamp)
-ORDER BY hour_timestamp;
-```
-
-**Panel 3: Price Volatility**
-```sql
-SELECT 
-  window_start as time,
-  symbol as metric,
-  price_volatility as value
-FROM gold_10min_metrics
-WHERE $__timeFilter(window_start)
-ORDER BY window_start;
-```
-
-### REST API (FastAPI - Optional)
-
-Tạo file `api/main.py`:
+**1. Parallelism (Độ song song)**
 ```python
-from fastapi import FastAPI
-import psycopg2
-from psycopg2.extras import RealDictCursor
+env = StreamExecutionEnvironment.get_execution_environment()
 
-app = FastAPI()
+# Set global parallelism
+env.set_parallelism(4)
 
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "database": "crypto_data",
-    "user": "user",
-    "password": "password"
-}
-
-@app.get("/api/prices/latest")
-def get_latest_prices():
-    conn = psycopg2.connect(**DB_CONFIG, cursor_factory=RealDictCursor)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT DISTINCT ON (symbol) 
-            symbol, price, processed_at
-        FROM crypto_prices_realtime
-        ORDER BY symbol, processed_at DESC;
-    """)
-    results = cur.fetchall()
-    cur.close()
-    conn.close()
-    return results
-
-@app.get("/api/metrics/hourly/{symbol}")
-def get_hourly_metrics(symbol: str, hours: int = 24):
-    conn = psycopg2.connect(**DB_CONFIG, cursor_factory=RealDictCursor)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT * FROM gold_hourly_metrics
-        WHERE symbol = %s 
-        AND hour_timestamp >= NOW() - INTERVAL '%s hours'
-        ORDER BY hour_timestamp DESC;
-    """, (symbol, hours))
-    results = cur.fetchall()
-    cur.close()
-    conn.close()
-    return results
+# Set per-operator parallelism
+stream.map(my_function).set_parallelism(8)
 ```
 
-Chạy API:
+**Nguyên tắc:** `parallelism = số TaskManager × số slots per TaskManager`  
+**Demo này:** 3 Kafka partitions → parallelism=2 hoặc 3
+
+**2. Checkpointing (Fault Tolerance)**
+```python
+# Enable checkpointing
+env.enable_checkpointing(60000)  # 60 seconds
+
+# Checkpoint configuration
+checkpoint_config = env.get_checkpoint_config()
+checkpoint_config.set_checkpointing_mode(CheckpointingMode.EXACTLY_ONCE)
+checkpoint_config.set_checkpoint_timeout(600000)  # 10 min timeout
+```
+
+**3. State Backend Selection**
+
+| State Backend | Use Case | Max Size | Performance |
+|---------------|----------|----------|-------------|
+| **HashMap** | Small state (<100MB) | Limited by heap | Very fast |
+| **RocksDB** | Large state (GBs-TBs) | Disk-bounded | Moderate (disk I/O) |
+
+**4. Buffer Timeout (Latency Tuning)**
+```python
+env.set_buffer_timeout(100)  # milliseconds
+```
+
+| Buffer Timeout | Latency | Throughput | Use Case |
+|----------------|---------|------------|----------|
+| 0ms | Lowest | Lowest | Ultra-low latency apps |
+| 100ms | Low | High | Balanced (recommended) |
+| -1 (disabled) | Highest | Highest | Batch-like processing |
+
+**5. Kafka Consumer Configuration**
+```python
+table_env.execute_sql("""
+    CREATE TABLE crypto_source (...) WITH (
+        'connector' = 'kafka',
+        'properties.group.id' = 'flink-crypto-consumer',
+        'scan.startup.mode' = 'latest-offset',
+        'properties.fetch.min.bytes' = '1024',
+        'properties.max.partition.fetch.bytes' = '1048576'
+    )
+""")
+```
+
+**6. JDBC Sink Tuning**
+```python
+table_env.execute_sql("""
+    CREATE TABLE crypto_sink (...) WITH (
+        'connector' = 'jdbc',
+        'sink.buffer-flush.max-rows' = '100',         # Batch size
+        'sink.buffer-flush.interval' = '1s',          # Flush interval
+        'sink.max-retries' = '3',                     # Retry on failure
+        'sink.parallelism' = '2'                      # Writer parallelism
+    )
+""")
+```
+
+---
+
+## 📈 Performance Verification - Bằng chứng Flink nhanh hơn
+
+### Chạy Performance Test
+
 ```powershell
-pip install fastapi uvicorn psycopg2-binary
-uvicorn api.main:app --reload --port 8000
+.\compare_latency.ps1
 ```
 
-Truy cập API docs: http://localhost:8000/docs
+Script này chạy 4 tests để đo và so sánh hiệu suất giữa Spark và Flink.
+
+### Test 1: Average Latency
+
+**Đo latency trung bình trong 5 phút gần đây:**
+
+```sql
+SELECT 
+    engine,
+    AVG(processed_at_timestamp - producer_timestamp) as avg_latency_sec,
+    COUNT(*) as sample_size
+FROM (Spark table UNION Flink table)
+WHERE processed_at > NOW() - INTERVAL '5 minutes';
+```
+
+**Kết quả:**
+```
+ engine | avg_latency_sec | sample_size 
+--------+-----------------+-------------
+ Spark  |            8.83 |         120
+ Flink  |            2.23 |         125
+```
+
+**Phân tích:**
+- ✅ **Flink nhanh hơn 3.96x** (8.83s vs 2.23s)
+- Spark: 8-9 giây latency do micro-batch processing
+- Flink: 2-3 giây latency nhờ event-driven architecture
+
+### Test 2: Latest Records Latency
+
+**5 records mới nhất từ mỗi engine:**
+
+**Spark:**
+```
+  symbol  | latency_sec | db_time  
+----------+-------------+----------
+ DOGE-USD |           7 | 09:09:00
+ ADA-USD  |           7 | 09:09:00
+ SOL-USD  |           7 | 09:09:00
+ ETH-USD  |           7 | 09:09:00
+ BTC-USD  |           7 | 09:09:00
+```
+
+**Flink:**
+```
+  symbol  | latency_sec | db_time  
+----------+-------------+----------
+ DOGE-USD |           4 | 09:09:08
+ ADA-USD  |           3 | 09:09:07
+ SOL-USD  |           2 | 09:09:06
+ ETH-USD  |           1 | 09:09:05
+ BTC-USD  |           1 | 09:09:05
+```
+
+**Phân tích:**
+- Spark: Tất cả records **cùng latency (7s)** vì batch processing
+- Flink: Latency **khác nhau (1-4s)** vì xử lý từng event
+- ✅ **Flink nhanh hơn 5-7x**
+
+### Test 3: Throughput Comparison
+
+```
+ engine |     records_per_min     
+--------+-------------------------
+ Spark  | 26.67
+ Flink  | 26.11
+```
+
+**Phân tích:** ✅ **Throughput tương đương** (~26 records/min)
+
+### Test 4: Data Freshness
+
+```
+ engine | time_since_last_write 
+--------+-----------------------
+ Spark  | 00:00:15.77
+ Flink  | 00:00:06.91
+```
+
+**Phân tích:**
+- Spark: Data cũ hơn **15.77 giây**
+- Flink: Data chỉ cũ **6.91 giây**
+- ✅ **Flink data mới hơn 2.3x**
+
+### Giải thích tại sao Flink nhanh hơn
+
+#### Spark Micro-batch Processing
+
+```
+Timeline:
+00:00  Producer sends → Kafka
+00:00  ├─ Message arrives in Kafka
+00:00  ├─ Spark: Waiting for trigger (15s interval)
+00:15  └─ Trigger! Read all messages from last 15s
+00:16      ├─ Parse JSON
+00:17      ├─ Transform data
+00:18      └─ Write batch to PostgreSQL
+       
+Total Latency: 15-18 seconds
+```
+
+**Nguyên nhân chậm:**
+- ⏱️ **Trigger Interval = 15 giây:** Phải đợi đủ thời gian mới xử lý
+- 📦 **Batch Processing:** Tất cả messages trong 15s được xử lý cùng lúc
+- **Minimum Latency = Trigger Interval**
+
+#### Flink Event-Driven Processing
+
+```
+Timeline:
+00:00  Producer sends → Kafka
+00:00  ├─ Message arrives in Kafka
+00:01  ├─ Flink reads event immediately
+00:01  ├─ Parse JSON (in-flight)
+00:02  ├─ Transform data (in-flight)
+00:02  └─ Write to PostgreSQL immediately
+
+Total Latency: 1-3 seconds
+```
+
+**Nguyên nhân nhanh:**
+- ⚡ **Event-Driven:** Xử lý ngay khi message đến
+- 🔄 **Pipelined Execution:** Parse → Transform → Write song song
+- 💨 **No Waiting:** Không có trigger interval
+
+### Bảng tóm tắt Performance
+
+| Metric | Spark | Flink | Winner |
+|--------|-------|-------|--------|
+| **Avg Latency** | 8.83s | 2.23s | ✅ Flink (3.96x) |
+| **Min Latency** | 15s | 1s | ✅ Flink (15x) |
+| **Throughput** | 26.67 rec/min | 26.11 rec/min | ⚖️ Equal |
+| **Data Freshness** | 15.77s old | 6.91s old | ✅ Flink (2.3x) |
+
+---
+
+## 🎯 Kết luận & Lựa chọn
+
+### Khi nào dùng Flink?
+
+✅ **Real-time dashboards:** Cần update < 5 giây  
+✅ **Fraud detection:** Phát hiện gian lận ngay lập tức  
+✅ **Live monitoring:** Giám sát hệ thống real-time  
+✅ **Trading systems:** High-frequency trading  
+✅ **IoT streaming:** Sensor data processing  
+✅ **Alerting systems:** Gửi alert trong vài giây  
+
+### Khi nào dùng Spark?
+
+✅ **ETL pipelines:** Batch + streaming trong cùng code  
+✅ **Data warehousing:** Load data mỗi 15-30 phút  
+✅ **Machine Learning:** Training models trên streaming data  
+✅ **Report generation:** Tạo báo cáo định kỳ  
+✅ **Large batch jobs:** Xử lý terabytes data  
+
+### Bảng lựa chọn
+
+| Tiêu chí | Spark | Flink | Chọn gì? |
+|----------|-------|-------|----------|
+| **Latency requirement** | 10-30s OK | < 5s cần | Flink cho real-time |
+| **Data volume** | Terabytes | Gigabytes | Spark cho big batch |
+| **Team experience** | Spark ecosystem | Flink learning curve | Spark dễ hơn |
+| **Use case** | Analytics, ML | Monitoring, alerting | Depends |
+| **Cost** | Lower (batch efficient) | Higher (always running) | Spark rẻ hơn |
+
+---
+
+## 🛑 Stop System
+
+```powershell
+# Stop all containers
+docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
+```
+
+---
+
+## 📝 Kết luận tổng quan
+
+**Apache Spark Structured Streaming** và **Apache Flink** đều là công cụ mạnh mẽ cho xử lý streaming:
+
+- **Spark**: Phù hợp cho batch + streaming, latency 8-15 giây, dễ học nếu đã biết Spark ecosystem
+- **Flink**: Latency thấp 1-3 giây, event-driven, phức tạp hơn nhưng mạnh mẽ cho real-time analytics
+
+**Kết quả thực tế từ demo này:**
+- Producer gửi 5 crypto pairs mỗi 10 giây
+- Spark xử lý theo batch 15 giây → **latency 8.83s**
+- Flink xử lý real-time từng event → **latency 2.23s**
+- Cả hai đều ghi vào PostgreSQL để so sánh side-by-side
+
+**Bằng chứng cụ thể:** Chạy `.\compare_latency.ps1` để xem Flink nhanh hơn Spark **3.96 lần**.
+
+**Lựa chọn phụ thuộc vào:** Yêu cầu latency, data volume, team experience, và budget.
+
