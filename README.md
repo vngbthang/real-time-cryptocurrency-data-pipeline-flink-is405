@@ -154,7 +154,7 @@ Tạo Airflow Connection cho PostgreSQL (nếu thiếu):
 docker exec airflow-webserver airflow connections add 'postgres_crypto' --conn-type 'postgres' --conn-host 'postgres-db' --conn-schema 'crypto_data' --conn-login 'user' --conn-password 'password' --conn-port 5432
 ```
 
-### 5.4 Grafana dashboard
+### 5.4 Grafana dashboards
 
 ```powershell
 docker-compose up -d grafana
@@ -162,9 +162,20 @@ Start-Process "http://localhost:3000"
 # Đăng nhập: admin / admin
 ```
 
-Dashboard: `Real-time Crypto Pipeline` (UID `crypto-pipeline`) hiển thị:
+**Dashboard 1: Real-time Crypto Pipeline** (`crypto-pipeline`)
 - Giá real-time (Spark/Flink), độ trễ trung bình (5 phút), tổng số records, phân bố theo symbol.
 - Gold layer: Avg price theo giờ, % thay đổi giá.
+- URL: `http://localhost:3000/d/crypto-pipeline`
+
+**Dashboard 2: Spark vs Flink Performance Comparison** (`spark-flink-perf`) ⭐ **MỚI**
+- Average Latency (5 min) comparison - Bar gauge
+- Throughput (records/min) comparison - Gauge
+- Latency Percentiles (p50, p95, p99) - Bar gauge
+- Records Per Minute - Time series
+- Average Latency Over Time - Time series
+- Total Records Processed & Data Freshness
+- Auto-refresh: 5 seconds
+- URL: `http://localhost:3000/d/spark-flink-perf`
 
 ---
 
@@ -179,15 +190,25 @@ Dashboard: `Real-time Crypto Pipeline` (UID `crypto-pipeline`) hiển thị:
 - Spark chạy trong container `spark-crypto-processor`, đọc Kafka và ghi PostgreSQL.
 - Cả hai cùng đọc `topic: crypto_prices` để so sánh công bằng.
 
-### 6.3 Thực nghiệm đo lường (script `compare_latency.ps1`)
+### 6.3 Thực nghiệm đo lường
 
-Chạy:
+**Cách 1: PowerShell Script** (`compare_latency.ps1`)
 ```powershell
 & "$PWD\compare_latency.ps1"
 ```
 Các truy vấn: tổng records, latency trung bình/percentiles, throughput, freshness, time-series.
 
-Kết quả tiêu biểu (mẫu):
+**Cách 2: Grafana Dashboard** (real-time visualization)
+```powershell
+Start-Process "http://localhost:3000/d/spark-flink-perf"
+```
+Dashboard tự động refresh mỗi 5 giây, hiển thị:
+- Latency comparison (bar gauge & time series)
+- Throughput comparison (gauge & time series)
+- Percentiles (p50, p95, p99)
+- Data freshness
+
+**Kết quả tiêu biểu (mẫu):**
 - Spark avg latency (5m): ~9.0s; Flink avg latency (5m): ~2.1s.
 - Throughput: Spark ~40 rec/min; Flink ~25–30 rec/min (tùy thời điểm).
 - Percentiles: Flink p95 ~3.5s vs Spark p95 ~14s.
@@ -262,6 +283,10 @@ Start-Process "http://localhost:8082"   # Flink
 Start-Process "http://localhost:8081"   # Spark
 Start-Process "http://localhost:8080"   # Airflow
 Start-Process "http://localhost:3000"   # Grafana
+
+# Mở Grafana Dashboards
+Start-Process "http://localhost:3000/d/crypto-pipeline"      # Real-time Pipeline
+Start-Process "http://localhost:3000/d/spark-flink-perf"    # Performance Comparison
 ```
 
 ## 🏗️ Kiến trúc hệ thống
