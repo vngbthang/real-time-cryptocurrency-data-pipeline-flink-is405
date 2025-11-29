@@ -90,7 +90,7 @@ def calculate_hourly_metrics(**context):
     LEFT JOIN previous_hour p 
         ON h.hour_timestamp = p.next_hour 
         AND h.symbol = p.symbol
-    ON CONFLICT (hour_timestamp) 
+    ON CONFLICT (hour_timestamp, symbol) 
     DO UPDATE SET
         avg_price = EXCLUDED.avg_price,
         min_price = EXCLUDED.min_price,

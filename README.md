@@ -1,54 +1,253 @@
-# 💰 Real-Time Cryptocurrency Pipeline: Apache Spark vs Apache Flink
+# Apache Flink: Báo cáo và Demo xử lý dữ liệu lớn (So sánh với Apache Spark)
 
-> **Dự án IS405**: So sánh hiệu suất xử lý dữ liệu streaming giữa **Apache Spark Structured Streaming** và **Apache Flink** trên pipeline thu thập giá cryptocurrency real-time từ Coinbase API.
+> Báo cáo môn học IS405 – Hệ thống minh họa Flink kết hợp/so sánh với Spark để xử lý dữ liệu streaming quy mô lớn trong thời gian thực.
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
-[![Spark](https://img.shields.io/badge/Spark-3.5.0-orange)](https://spark.apache.org/)
 [![Flink](https://img.shields.io/badge/Flink-1.18.0-red)](https://flink.apache.org/)
+[![Spark](https://img.shields.io/badge/Spark-3.5.0-orange)](https://spark.apache.org/)
 [![Kafka](https://img.shields.io/badge/Kafka-7.3.0-black)](https://kafka.apache.org/)
+[![Airflow](https://img.shields.io/badge/Airflow-2.8.1-lightgrey)](https://airflow.apache.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14-blue)](https://www.postgresql.org/)
 
 ---
 
 ## 📋 Mục lục
 
-1. [Giới thiệu](#-giới-thiệu)
-2. [Kiến trúc hệ thống](#-kiến-trúc-hệ-thống)
-3. [Công nghệ sử dụng](#-công-nghệ-sử-dụng)
-4. [Quick Start](#-quick-start---khởi-động-nhanh)
-5. [Apache Flink - Chi tiết](#-apache-flink---thông-tin-chi-tiết)
-6. [So sánh Spark vs Flink](#-so-sánh-chi-tiết-spark-vs-flink)
-7. [Performance Verification](#-performance-verification---chứng-minh-flink-nhanh-hơn)
-8. [Dashboard & Monitoring](#-dashboard--monitoring)
-9. [Troubleshooting](#-troubleshooting)
-10. [Kết luận](#-kết-luận)
+1. Thông tin chung về Apache Flink
+2. Đặc trưng, Ưu/Nhược điểm
+3. Case study (ứng dụng thực tế)
+4. Cấu trúc & Kiến trúc hệ thống demo
+5. Cài đặt, kết nối và cách chạy hệ thống
+6. So sánh Flink với Spark (kiến trúc & thực nghiệm)
+7. Điều chỉnh tham số (tuning)
+8. Minh họa vận hành xử lý dữ liệu lớn
+9. Kết quả thực nghiệm (số liệu đo)
+10. Kết luận
 
 ---
 
-## 🎯 Giới thiệu
+## 1. Thông tin chung về Apache Flink
 
-Dự án xây dựng một **Real-Time ETL Pipeline** hoàn chỉnh để xử lý dữ liệu cryptocurrency từ Coinbase API, với mục tiêu chính là **so sánh hiệu suất** giữa hai stream processing engines hàng đầu: **Apache Spark** và **Apache Flink**.
+**Apache Flink** là framework và engine phân tán cho xử lý dữ liệu **streaming** và **batch**, nổi bật với:
+- Xử lý sự kiện theo thời gian thực, hỗ trợ **Event Time** và **Watermarks**.
+- **Exactly-once semantics**, stateful streaming và checkpointing tin cậy.
+- Khả năng **scale-out** mạnh mẽ với TaskManagers/JobManager.
+- Hỗ trợ API phong phú: DataStream API, Table/SQL, CEP.
 
-### Vấn đề giải quyết
+Use-cases điển hình: phát hiện gian lận, giám sát hệ thống, phân tích log real-time, recommendation.
 
-- **Real-time ingestion**: Thu thập dữ liệu giá và khối lượng giao dịch từ Coinbase API mỗi 10 giây
-- **Parallel stream processing**: Xử lý cùng lúc bằng cả Spark và Flink để so sánh
-- **Latency comparison**: Đo và chứng minh Flink có latency thấp hơn Spark
-- **Data aggregation**: Tạo metrics theo cửa sổ thời gian (10 phút, 1 giờ)
-- **Orchestration**: Tự động hóa với Apache Airflow
+---
 
-### 5 cặp cryptocurrency được theo dõi
+## 2. Đặc trưng, Ưu/Nhược điểm
 
-```python
-CRYPTO_PAIRS = [
-    'BTC-USD',   # Bitcoin
-    'ETH-USD',   # Ethereum
-    'SOL-USD',   # Solana
-    'ADA-USD',   # Cardano
-    'DOGE-USD'   # Dogecoin
-]
+**Ưu điểm**
+- Độ trễ thấp (low latency) cho streaming thực sự.
+- Event-time chuẩn, xử lý out-of-order với watermarks.
+- Exactly-once, state backend hiệu quả, checkpoint/restore.
+- Tối ưu cho long-running jobs, ổn định khi chạy 24/7.
+
+**Nhược điểm**
+- Đường cong học tập (learning curve) cao hơn.
+- Hệ sinh thái nhỏ hơn Spark về ML/Batch.
+- Tuning cần hiểu rõ parallelism, slot, backpressure.
+
+---
+
+## 3. Case study (tiêu biểu)
+
+- **Alibaba**: xử lý log và giao dịch quy mô lớn, real-time analytics.
+- **Netflix/Uber**: giám sát sự kiện hệ thống, phát hiện anomaly real-time.
+- **Ververica** (sáng lập Flink): nhiều case ngân hàng/viễn thông.
+
+---
+
+## 4. Cấu trúc & Kiến trúc hệ thống demo
+
+Thư mục chính:
+
+```
+coinbase_producer.py           # Producer gửi giá crypto vào Kafka
+docker-compose.yml             # Orchestrate toàn bộ services
+Dockerfile.producer            # Build producer
+Dockerfile.flink               # Build PyFlink app
+Dockerfile.spark               # Build Spark streaming app (so sánh)
+init-db.sql                    # Tạo schema Silver/Gold
+requirements.txt               # Python deps
+dags/                          # Airflow DAGs (orchestrate, gold aggregations)
+spark-apps/                    # Spark streaming job
+flink-apps/                    # Flink streaming job
+sql/                           # SQL bổ sung/alter bảng
+grafana/                       # Provisioning datasource & dashboards
+```
+
+Kiến trúc triển khai:
+
+```
+Coinbase API → Kafka → (Flink & Spark) → PostgreSQL (Silver) → Airflow (Gold 10m/hour) → Grafana
+
+Containers: zookeeper, kafka, postgres-db, airflow-{init,webserver,scheduler},
+            flink-jobmanager, flink-taskmanager, flink-crypto-processor,
+            spark-master, spark-worker, spark-crypto-processor, grafana
 ```
 
 ---
+
+## 5. Cài đặt, kết nối và cách chạy hệ thống
+
+Yêu cầu: Docker Desktop, Windows PowerShell 5.1.
+
+### 5.1 Khởi động hệ thống
+
+```powershell
+# Tại thư mục project
+docker-compose up -d
+
+# Kiểm tra containers
+docker-compose ps
+```
+
+### 5.2 Kiểm tra pipeline hoạt động
+
+```powershell
+# Kiểm tra Producer
+docker logs crypto-producer --tail 20
+
+# Kiểm tra Flink JobManager UI
+Start-Process "http://localhost:8082"
+
+# Kiểm tra Spark Master UI
+Start-Process "http://localhost:8081"
+
+# Kiểm tra Silver layer (DB)
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT COUNT(*) FROM crypto_prices_flink;"
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT COUNT(*) FROM crypto_prices_realtime;"
+
+# Kiểm tra Gold layer
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT COUNT(*) FROM gold_10min_metrics;"
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT COUNT(*) FROM gold_hourly_metrics;"
+```
+
+### 5.3 Airflow orchestration
+
+Airflow UI: `http://localhost:8080`
+- `crypto_streaming_pipeline`: (nếu dùng) submit job (Spark trước đây). Hiện Spark chạy bằng container riêng.
+- `gold_10min_aggregation` và `gold_hourly_aggregation`: tổng hợp Gold layer theo lịch 10 phút.
+
+Tạo Airflow Connection cho PostgreSQL (nếu thiếu):
+
+```powershell
+docker exec airflow-webserver airflow connections add 'postgres_crypto' --conn-type 'postgres' --conn-host 'postgres-db' --conn-schema 'crypto_data' --conn-login 'user' --conn-password 'password' --conn-port 5432
+```
+
+### 5.4 Grafana dashboard
+
+```powershell
+docker-compose up -d grafana
+Start-Process "http://localhost:3000"
+# Đăng nhập: admin / admin
+```
+
+Dashboard: `Real-time Crypto Pipeline` (UID `crypto-pipeline`) hiển thị:
+- Giá real-time (Spark/Flink), độ trễ trung bình (5 phút), tổng số records, phân bố theo symbol.
+- Gold layer: Avg price theo giờ, % thay đổi giá.
+
+---
+
+## 6. So sánh Flink với Spark
+
+### 6.1 Kiến trúc & ngữ nghĩa
+- **Flink**: event-time native, watermarks, stateful streaming, exactly-once mạnh.
+- **Spark Structured Streaming**: micro-batch, latency cao hơn, mạnh về batch/SQL/ML.
+
+### 6.2 Triển khai trong hệ thống
+- Flink chạy trong container `flink-crypto-processor` (PyFlink), đọc Kafka và ghi PostgreSQL.
+- Spark chạy trong container `spark-crypto-processor`, đọc Kafka và ghi PostgreSQL.
+- Cả hai cùng đọc `topic: crypto_prices` để so sánh công bằng.
+
+### 6.3 Thực nghiệm đo lường (script `compare_latency.ps1`)
+
+Chạy:
+```powershell
+& "$PWD\compare_latency.ps1"
+```
+Các truy vấn: tổng records, latency trung bình/percentiles, throughput, freshness, time-series.
+
+Kết quả tiêu biểu (mẫu):
+- Spark avg latency (5m): ~9.0s; Flink avg latency (5m): ~2.1s.
+- Throughput: Spark ~40 rec/min; Flink ~25–30 rec/min (tùy thời điểm).
+- Percentiles: Flink p95 ~3.5s vs Spark p95 ~14s.
+
+---
+
+## 7. Điều chỉnh tham số (tuning)
+
+### 7.1 Flink
+- Parallelism: `flink-apps/flink_stream_processor.py` (set `env.set_parallelism(2)`), `taskmanager.numberOfTaskSlots` trong `docker-compose.yml`.
+- Checkpointing: bật trong job PyFlink (nếu cần), cấu hình interval và state backend.
+- Kafka source: `properties` như `group.id`, `auto.offset.reset`, `scan.startup.mode`.
+
+### 7.2 Spark
+- Worker resources: `SPARK_WORKER_CORES`, `SPARK_WORKER_MEMORY` trong `docker-compose.yml`.
+- Batch interval và trigger: trong `spark-apps/spark_stream_processor.py`.
+- Kafka options: maxOffsetsPerTrigger, startingOffsets.
+
+### 7.3 PostgreSQL
+- Indexes: đã tạo trên timestamp, symbol.
+- Connection pool: có thể tinh chỉnh nếu throughput cao.
+
+---
+
+## 8. Minh họa vận hành xử lý dữ liệu lớn
+
+Pipeline minh họa đầy đủ các bước:
+1) Producer → Kafka (ingestion liên tục mỗi 10s cho 5 cặp crypto).
+2) Flink & Spark → PostgreSQL (Silver): lưu sự kiện kèm `processed_at` để đo latency.
+3) Airflow → Gold (10 phút/giờ): tổng hợp avg/min/max/volatility, % thay đổi.
+4) Grafana → Dashboard real-time: so sánh Spark vs Flink.
+
+Có thể tăng tải bằng cách:
+- Tăng `POLL_INTERVAL_SECONDS` nhỏ lại (ví dụ 5s).
+- Tăng số symbol, partitions Kafka, parallelism Flink/Spark.
+
+---
+
+## 9. Kết quả thực nghiệm
+
+Trong phiên chạy hiện tại:
+- Silver (Spark): ~1.8k records; Silver (Flink): ~2.0k records.
+- Gold 10m: có dữ liệu (10+ bản ghi); Gold hourly: có dữ liệu (5+ bản ghi).
+- Latency: Flink thấp hơn đáng kể (p50 ~1.5s vs ~9.5s).
+
+Chi tiết xem tại script `compare_latency.ps1` và dashboard Grafana.
+
+---
+
+## 10. Kết luận
+
+- **Flink** phù hợp cho streaming thời gian thực với yêu cầu độ trễ thấp, exactly-once và event-time chuẩn.
+- **Spark** mạnh ở batch, SQL, ML, và hệ sinh thái phong phú; streaming micro-batch có độ trễ cao hơn.
+- Hệ thống demo minh họa rõ ràng kiến trúc kết hợp, cách cài đặt/chạy, điều chỉnh tham số, và so sánh thực nghiệm.
+
+---
+
+## Phụ lục: Lệnh nhanh
+
+```powershell
+# Khởi động toàn bộ
+docker-compose up -d
+
+# Kiểm tra DB nhanh
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT COUNT(*) FROM crypto_prices_flink;"
+
+# Chạy script so sánh
+& "$PWD\compare_latency.ps1"
+
+# Mở UIs
+Start-Process "http://localhost:8082"   # Flink
+Start-Process "http://localhost:8081"   # Spark
+Start-Process "http://localhost:8080"   # Airflow
+Start-Process "http://localhost:3000"   # Grafana
+```
 
 ## 🏗️ Kiến trúc hệ thống
 

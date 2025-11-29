@@ -1,88 +1,44 @@
-#!/usr/bin/env pwsh
-# Latency Comparison Script: Spark vs Flink
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "SPARK vs FLINK PERFORMANCE COMPARISON" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 
-Write-Host "`n================================================" -ForegroundColor Cyan
-Write-Host "  LATENCY COMPARISON: SPARK vs FLINK" -ForegroundColor Yellow
-Write-Host "================================================`n" -ForegroundColor Cyan
+# Query 1: Total Records
+Write-Host "`n[Query 1/10] Total Records Comparison" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, COUNT(*) as total_records FROM crypto_prices_realtime UNION ALL SELECT 'Flink' as engine, COUNT(*) as total_records FROM crypto_prices_flink;"
 
-Write-Host "Test 1: Average Latency (5 phut gan day)`n" -ForegroundColor Green
+# Query 2: Average Latency (Last 5 minutes)
+Write-Host "`n[Query 2/10] Average Latency (Last 5 minutes)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, ROUND(AVG(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as avg_latency_seconds, COUNT(*) as sample_size FROM crypto_prices_realtime WHERE processed_at > NOW() - INTERVAL '5 minutes' UNION ALL SELECT 'Flink' as engine, ROUND(AVG(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as avg_latency_seconds, COUNT(*) as sample_size FROM crypto_prices_flink WHERE processed_at > NOW() - INTERVAL '5 minutes';"
 
-docker exec postgres-db psql -U user -d crypto_data -c @"
-SELECT 
-    'Spark' as engine,
-    ROUND(AVG(EXTRACT(EPOCH FROM processed_at)::BIGINT - timestamp)::numeric, 2) as avg_latency_sec,
-    COUNT(*) as sample_size
-FROM crypto_prices_realtime
-WHERE processed_at > NOW() - INTERVAL '5 minutes'
-UNION ALL
-SELECT 
-    'Flink' as engine,
-    ROUND(AVG(EXTRACT(EPOCH FROM processed_at)::BIGINT - timestamp)::numeric, 2),
-    COUNT(*)
-FROM crypto_prices_flink
-WHERE processed_at > NOW() - INTERVAL '5 minutes';
-"@
+# Query 3: Latest 5 Records (Spark)
+Write-Host "`n[Query 3/10] Latest 5 Records with Latency (Spark)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, symbol, ROUND(price::numeric, 2) as price, EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp)))::integer as latency_seconds, processed_at FROM crypto_prices_realtime ORDER BY processed_at DESC LIMIT 5;"
 
-Write-Host "`nTest 2: Latest 5 Records - Latency Chi Tiet`n" -ForegroundColor Green
-Write-Host "--- SPARK ---" -ForegroundColor Cyan
-docker exec postgres-db psql -U user -d crypto_data -c @"
-SELECT symbol, 
-       EXTRACT(EPOCH FROM processed_at)::BIGINT - timestamp as latency_sec,
-       TO_CHAR(processed_at, 'HH24:MI:SS') as db_time
-FROM crypto_prices_realtime 
-ORDER BY processed_at DESC LIMIT 5;
-"@
+# Query 4: Latest 5 Records (Flink)
+Write-Host "`n[Query 4/10] Latest 5 Records with Latency (Flink)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Flink' as engine, symbol, ROUND(price::numeric, 2) as price, EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp)))::integer as latency_seconds, processed_at FROM crypto_prices_flink ORDER BY processed_at DESC LIMIT 5;"
 
-Write-Host "`n--- FLINK ---" -ForegroundColor Cyan
-docker exec postgres-db psql -U user -d crypto_data -c @"
-SELECT symbol, 
-       EXTRACT(EPOCH FROM processed_at)::BIGINT - timestamp as latency_sec,
-       TO_CHAR(processed_at, 'HH24:MI:SS') as db_time
-FROM crypto_prices_flink 
-ORDER BY processed_at DESC LIMIT 5;
-"@
+# Query 5: Throughput
+Write-Host "`n[Query 5/10] Throughput (Records per minute)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, ROUND((COUNT(*)::numeric / EXTRACT(EPOCH FROM (MAX(processed_at) - MIN(processed_at))) * 60), 2) as records_per_minute FROM crypto_prices_realtime WHERE processed_at > NOW() - INTERVAL '5 minutes' UNION ALL SELECT 'Flink' as engine, ROUND((COUNT(*)::numeric / EXTRACT(EPOCH FROM (MAX(processed_at) - MIN(processed_at))) * 60), 2) as records_per_minute FROM crypto_prices_flink WHERE processed_at > NOW() - INTERVAL '5 minutes';"
 
-Write-Host "`nTest 3: Throughput (Records per Minute)`n" -ForegroundColor Green
+# Query 6: Data Freshness
+Write-Host "`n[Query 6/10] Data Freshness (Time since last write)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, EXTRACT(EPOCH FROM (NOW() - MAX(processed_at)))::integer as seconds_since_last_write, MAX(processed_at) as last_write_time FROM crypto_prices_realtime UNION ALL SELECT 'Flink' as engine, EXTRACT(EPOCH FROM (NOW() - MAX(processed_at)))::integer as seconds_since_last_write, MAX(processed_at) as last_write_time FROM crypto_prices_flink;"
 
-docker exec postgres-db psql -U user -d crypto_data -c @"
-SELECT 
-    'Spark' as engine,
-    COUNT(*) / NULLIF(EXTRACT(EPOCH FROM (MAX(processed_at) - MIN(processed_at))), 0) * 60 as records_per_min
-FROM crypto_prices_realtime
-WHERE processed_at > NOW() - INTERVAL '5 minutes'
-UNION ALL
-SELECT 
-    'Flink',
-    COUNT(*) / NULLIF(EXTRACT(EPOCH FROM (MAX(processed_at) - MIN(processed_at))), 0) * 60
-FROM crypto_prices_flink
-WHERE processed_at > NOW() - INTERVAL '5 minutes';
-"@
+# Query 7: Records Distribution by Symbol
+Write-Host "`n[Query 7/10] Records Distribution by Symbol" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, symbol, COUNT(*) as record_count, ROUND(AVG(price)::numeric, 2) as avg_price, ROUND(MIN(price)::numeric, 2) as min_price, ROUND(MAX(price)::numeric, 2) as max_price FROM crypto_prices_realtime GROUP BY symbol UNION ALL SELECT 'Flink' as engine, symbol, COUNT(*) as record_count, ROUND(AVG(price)::numeric, 2) as avg_price, ROUND(MIN(price)::numeric, 2) as min_price, ROUND(MAX(price)::numeric, 2) as max_price FROM crypto_prices_flink GROUP BY symbol ORDER BY engine, symbol;"
 
-Write-Host "`nTest 4: Data Freshness`n" -ForegroundColor Green
+# Query 8: Latency Percentiles
+Write-Host "`n[Query 8/10] Latency Percentiles (p50, p95, p99)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "WITH spark_latencies AS (SELECT EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))) as latency FROM crypto_prices_realtime WHERE processed_at > NOW() - INTERVAL '5 minutes'), flink_latencies AS (SELECT EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))) as latency FROM crypto_prices_flink WHERE processed_at > NOW() - INTERVAL '5 minutes') SELECT 'Spark' as engine, ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency)::numeric, 2) as p50_latency, ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency)::numeric, 2) as p95_latency, ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency)::numeric, 2) as p99_latency FROM spark_latencies UNION ALL SELECT 'Flink' as engine, ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency)::numeric, 2) as p50_latency, ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency)::numeric, 2) as p95_latency, ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency)::numeric, 2) as p99_latency FROM flink_latencies;"
 
-docker exec postgres-db psql -U user -d crypto_data -c @"
-SELECT 
-    'Spark' as engine,
-    NOW() - MAX(processed_at) as time_since_last_write
-FROM crypto_prices_realtime
-UNION ALL
-SELECT 
-    'Flink',
-    NOW() - MAX(processed_at)
-FROM crypto_prices_flink;
-"@
+# Query 9: Time Series
+Write-Host "`n[Query 9/10] Time Series - Records per Minute (Last 10 minutes)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "SELECT 'Spark' as engine, DATE_TRUNC('minute', processed_at) as minute, COUNT(*) as records FROM crypto_prices_realtime WHERE processed_at > NOW() - INTERVAL '10 minutes' GROUP BY DATE_TRUNC('minute', processed_at) UNION ALL SELECT 'Flink' as engine, DATE_TRUNC('minute', processed_at) as minute, COUNT(*) as records FROM crypto_prices_flink WHERE processed_at > NOW() - INTERVAL '10 minutes' GROUP BY DATE_TRUNC('minute', processed_at) ORDER BY minute DESC, engine;"
 
-Write-Host "`n================================================" -ForegroundColor Cyan
-Write-Host "  KET LUAN" -ForegroundColor Yellow
-Write-Host "================================================" -ForegroundColor Cyan
-Write-Host "Flink NHANH HON neu:" -ForegroundColor Green
-Write-Host "  - Latency Flink < 5 giay" -ForegroundColor White
-Write-Host "  - Latency Spark >= 15 giay (do batch interval)" -ForegroundColor White
-Write-Host "  - Flink co throughput tuong duong hoac cao hon" -ForegroundColor White
-Write-Host "`nLy do Spark cham:" -ForegroundColor Yellow
-Write-Host "  - Micro-batch: Doi 15 giay moi xu ly 1 batch" -ForegroundColor White
-Write-Host "  - Minimum latency = trigger interval" -ForegroundColor White
-Write-Host "`nLy do Flink nhanh:" -ForegroundColor Yellow
-Write-Host "  - True streaming: Xu ly ngay khi nhan event" -ForegroundColor White
-Write-Host "  - Event-driven pipeline" -ForegroundColor White
-Write-Host "================================================`n" -ForegroundColor Cyan
+# Query 10: Summary Statistics
+Write-Host "`n[Query 10/10] Summary Statistics (Last 5 minutes)" -ForegroundColor Yellow
+docker exec postgres-db psql -U user -d crypto_data -c "WITH spark_stats AS (SELECT COUNT(*) as total_records, ROUND(AVG(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as avg_latency, ROUND(MIN(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as min_latency, ROUND(MAX(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as max_latency, COUNT(DISTINCT symbol) as unique_symbols FROM crypto_prices_realtime WHERE processed_at > NOW() - INTERVAL '5 minutes'), flink_stats AS (SELECT COUNT(*) as total_records, ROUND(AVG(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as avg_latency, ROUND(MIN(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as min_latency, ROUND(MAX(EXTRACT(EPOCH FROM (processed_at - TO_TIMESTAMP(timestamp))))::numeric, 2) as max_latency, COUNT(DISTINCT symbol) as unique_symbols FROM crypto_prices_flink WHERE processed_at > NOW() - INTERVAL '5 minutes') SELECT 'Spark' as engine, total_records, avg_latency, min_latency, max_latency, unique_symbols FROM spark_stats UNION ALL SELECT 'Flink' as engine, total_records, avg_latency, min_latency, max_latency, unique_symbols FROM flink_stats;"
+Write-Host "`n"

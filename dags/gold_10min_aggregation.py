@@ -35,6 +35,8 @@ def aggregate_10min_metrics(**context):
         avg_price,
         min_price,
         max_price,
+        total_volume,
+        avg_volume,
         price_volatility,
         record_count
     )
@@ -55,7 +57,7 @@ def aggregate_10min_metrics(**context):
         date_trunc('hour', processed_at) + 
             (FLOOR(EXTRACT(MINUTE FROM processed_at) / 10) * 10) * INTERVAL '1 minute',
         symbol
-    ON CONFLICT (window_start) 
+    ON CONFLICT (window_start, symbol) 
     DO UPDATE SET
         avg_price = EXCLUDED.avg_price,
         min_price = EXCLUDED.min_price,

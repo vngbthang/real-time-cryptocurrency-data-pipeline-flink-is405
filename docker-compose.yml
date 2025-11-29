@@ -199,6 +199,39 @@ services:
       - SPARK_WORKER_MEMORY=1G
       - SPARK_WORKER_CORES=1
 
+  # Spark Streaming Application (Processing crypto prices)
+  spark-crypto-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-crypto-processor
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - spark-master
+      - spark-worker
+      - kafka
+      - postgres-db
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - POSTGRES_HOST=postgres-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=crypto_data
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    restart: unless-stopped
+    command:
+      - /bin/bash
+      - -c
+      - |
+        echo 'Waiting for Spark cluster to be ready...'
+        sleep 20
+        echo 'Submitting Spark Streaming job...'
+        /opt/spark/bin/spark-submit \
+          --master spark://spark-master:7077 \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.postgresql:postgresql:42.6.0 \
+          /opt/spark/apps/spark_stream_processor.py
+
   # --- APACHE FLINK SERVICES (For Comparison with Spark) ---
 
   # Flink JobManager (Master)
@@ -268,6 +301,26 @@ services:
         python3 /opt/flink-apps/flink_stream_processor.py
       "
 
+  # --- GRAFANA (Visualization Dashboard) ---
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana
+    networks:
+      - crypto-pipeline-net
+    depends_on:
+      - postgres-db
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   postgres_airflow_data:
+  grafana_data:

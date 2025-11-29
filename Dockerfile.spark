@@ -1,0 +1,21 @@
+FROM apache/spark:3.5.0-python3
+
+USER root
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir \
+    pyspark==3.5.0 \
+    kafka-python==2.0.2 \
+    psycopg2-binary==2.9.9
+
+# Copy Spark application
+COPY spark-apps/spark_stream_processor.py /opt/spark/apps/spark_stream_processor.py
+
+WORKDIR /opt/spark
+
+# Set environment variables
+ENV SPARK_MASTER=spark://spark-master:7077
+ENV PYTHONUNBUFFERED=1
+
+# Default command
+CMD ["/bin/bash"]
