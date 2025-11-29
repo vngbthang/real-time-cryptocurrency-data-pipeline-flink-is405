@@ -1,6 +1,6 @@
-# Apache Flink: Báo cáo và Demo xử lý dữ liệu lớn (So sánh với Apache Spark)
+# Apache Flink: Seminar và Demo xử lý dữ liệu lớn (So sánh với Apache Spark)
 
-> Báo cáo môn học IS405 – Hệ thống minh họa Flink kết hợp/so sánh với Spark để xử lý dữ liệu streaming quy mô lớn trong thời gian thực.
+> Seminar môn học IS405 – Hệ thống minh họa Flink kết hợp/so sánh với Spark để xử lý dữ liệu streaming quy mô lớn trong thời gian thực.
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
 [![Flink](https://img.shields.io/badge/Flink-1.18.0-red)](https://flink.apache.org/)
@@ -11,7 +11,7 @@
 
 ---
 
-## 📋 Mục lục
+## Mục lục
 
 1. Thông tin chung về Apache Flink
 2. Đặc trưng, Ưu/Nhược điểm
@@ -73,11 +73,19 @@ Dockerfile.flink               # Build PyFlink app
 Dockerfile.spark               # Build Spark streaming app (so sánh)
 init-db.sql                    # Tạo schema Silver/Gold
 requirements.txt               # Python deps
-dags/                          # Airflow DAGs (orchestrate, gold aggregations)
+compare_latency.ps1            # Performance comparison script
+dags/                          # Airflow DAGs (gold aggregations)
+  ├─ auto_startup_pipeline.py  # Auto-unpause DAGs
+  ├─ gold_aggregation.py       # Hourly metrics
+  └─ gold_10min_aggregation.py # 10-minute metrics
 spark-apps/                    # Spark streaming job
+  └─ spark_stream_processor.py
 flink-apps/                    # Flink streaming job
-sql/                           # SQL bổ sung/alter bảng
-grafana/                       # Provisioning datasource & dashboards
+  └─ flink_stream_processor.py
+sql/                           # SQL queries
+  └─ comparison_queries.sql    # Performance comparison queries
+grafana/                       # Grafana provisioning
+  └─ provisioning/
 ```
 
 Kiến trúc triển khai:
@@ -85,9 +93,11 @@ Kiến trúc triển khai:
 ```
 Coinbase API → Kafka → (Flink & Spark) → PostgreSQL (Silver) → Airflow (Gold 10m/hour) → Grafana
 
-Containers: zookeeper, kafka, postgres-db, airflow-{init,webserver,scheduler},
+Containers: zookeeper, kafka, kafka-init, postgres-db, postgres-airflow-db,
+            airflow-init, airflow-webserver, airflow-scheduler,
             flink-jobmanager, flink-taskmanager, flink-crypto-processor,
-            spark-master, spark-worker, spark-crypto-processor, grafana
+            spark-master, spark-worker, spark-crypto-processor,
+            crypto-producer, grafana
 ```
 
 ---
@@ -129,9 +139,14 @@ docker exec postgres-db psql -U user -d crypto_data -c "SELECT COUNT(*) FROM gol
 
 ### 5.3 Airflow orchestration
 
-Airflow UI: `http://localhost:8080`
-- `crypto_streaming_pipeline`: (nếu dùng) submit job (Spark trước đây). Hiện Spark chạy bằng container riêng.
-- `gold_10min_aggregation` và `gold_hourly_aggregation`: tổng hợp Gold layer theo lịch 10 phút.
+Airflow UI: `http://localhost:8080` (admin/admin)
+
+**Active DAGs:**
+- `gold_hourly_aggregation`: Tổng hợp metrics theo giờ (chạy mỗi 10 phút)
+- `gold_10min_aggregation`: Tổng hợp metrics theo cửa sổ 10 phút (chạy mỗi 10 phút)
+- `auto_startup_pipeline`: Auto-unpause các DAGs khi khởi động
+
+**Lưu ý:** Spark và Flink chạy trong containers riêng (không qua Airflow DAG), Airflow chỉ orchestrate Gold layer aggregations.
 
 Tạo Airflow Connection cho PostgreSQL (nếu thiếu):
 
